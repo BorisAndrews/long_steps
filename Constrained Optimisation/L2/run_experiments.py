@@ -8,7 +8,6 @@ automatically generates energy logs with meaningful names.
 """
 
 import subprocess
-import sys
 import os
 from pathlib import Path
 
@@ -19,14 +18,14 @@ EXPERIMENTS = {
         "script": "gradient_periodic.py",
         "cycles": ["127"],
         "base_args": [
-            "--max-iters", "1024",
+            "--max-iters", "128",
         ]
     },
     "gradient_chebyshev": {
         "script": "gradient_periodic.py",
-        "cycles": ["0.75", "0.8", "0.85"],  # Chebyshev tau rates
+        "cycles": ["0.75", "0.8", "0.85", "0.9", "0.95", "1"],  # Chebyshev tau rates
         "base_args": [
-            "--max-iters", "1024",
+            "--max-iters", "128",
         ]
     },
     # "gradient_linesearch": {

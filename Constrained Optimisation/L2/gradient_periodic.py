@@ -30,6 +30,7 @@ from firedrake import (
     VTKFile,
     SpatialCoordinate,
     sin,
+    cos,
     DirichletBC,
     pi,
     RED,
@@ -123,14 +124,14 @@ def parse_taus(taus_str: str):
     return taus
 
 
-def gradient_descent_periodic(nx=128, degree=1, gamma=2**16, taus=None, chebyshev_tau_rate=None,
+def gradient_descent_periodic(nx=128, degree=1, gamma=2**16, taus=None, chebyshev_taus_rate=None, chebyshev_taus_prob=None,
                                           f_type="gaussian", f_center=(0.5, 0.5), f_width=2**-3, f_amp=1.0, f_shift=-2**-4,
                                           max_iters=2**10,
                                           ic_max=6, ic_amp=0, seed=None,
                                           output="gradient_periodic.pvd", save_every=1, energy_log=None,
                                           circular_inner_product=False):
-    if not taus and not chebyshev_tau_rate:
-        raise ValueError("Provide at least one step size via --taus, e.g. --taus 1e-2,5e-3,1e-2, or rate for Chebyshev tau cycles via --chebyshev-tau-rate, e.g. --chebyshev-tau-rate 0.9")
+    if not taus and not chebyshev_taus_rate:
+        raise ValueError("Provide at least one step size via --taus, e.g. --taus 1e-2,5e-3,1e-2, or rate for Chebyshev tau cycles via --chebyshev-taus-rate, e.g. --chebyshev-taus-rate 0.9")
 
     # Mesh and space
     mesh = UnitSquareMesh(nx, nx, quadrilateral=True)
@@ -184,17 +185,28 @@ def gradient_descent_periodic(nx=128, degree=1, gamma=2**16, taus=None, chebyshe
 
     # Descent loop with periodic taus
     Lip = Constant(1)  # Exact Lipschitz value
-    if chebyshev_tau_rate:
+
+    if chebyshev_taus_rate:
         phi = (1 + sqrt(5))/2
-        chebyshev_tau_scale = 2/(1 + cosh(ln(chebyshev_tau_rate)))
-    else:
+        chebyshev_taus_scale = 2/(1 + cosh(ln(chebyshev_taus_rate)))
+    
+    if taus:
         nT = len(taus)
     
+    if chebyshev_taus_prob:
+        k_chebyshev = 1
+
     for k in range(1, max_iters + 1):
-        if chebyshev_tau_rate:
-            tau_k = 1/(1 - chebyshev_tau_scale * sin(pi*phi*(k-1))**2)
-        else:
+        if chebyshev_taus_prob:
+            if rng.uniform() > chebyshev_taus_prob:
+                tau_k = float(taus[(k - k_chebyshev) % nT])
+            else:
+                tau_k = 1/(1 - chebyshev_taus_scale * cos(pi*phi*k_chebyshev)**2)
+                k_chebyshev += 1
+        elif taus and not(chebyshev_taus_rate):
             tau_k = float(taus[(k - 1) % nT])
+        else:
+            tau_k = 1/(1 - chebyshev_taus_scale * cos(pi*phi*k)**2)
         
         # Gradient direction (zero boundary)
         g = gradient_direction(u, f, gamma, f_center, f_width, circular_inner_product)
@@ -249,8 +261,9 @@ def parse_args():
     p.add_argument("--f-shift", type=float, default=-2**-4, help="Vertical shift for gaussian constraint (negative shifts below plane)")
     # Either explicit taus, a named dictionary sequence, or a preset can be provided
     p.add_argument("--taus", type=str, default=None, help="Comma-separated list of step sizes, e.g. '1e-2,5e-3,1e-2'")
-    p.add_argument("--cycle-length", type=str, default=None, help="Length of tau cycle in TAU_SEQUENCES dict")
-    p.add_argument("--chebyshev-tau-rate", type=float, default=None, help="Selected if using Chebyshev tau cycles, value (in [0,1]) indicates target rate for exponential decay of low-frequency modes")
+    p.add_argument("--taus-cycle", type=str, default=None, help="Length of tau cycle in TAU_SEQUENCES dict")
+    p.add_argument("--chebyshev-taus-rate", type=float, default=None, help="Selected if using Chebyshev tau cycles, value (in [0,1]) indicates target rate for exponential decay of low-frequency modes")
+    p.add_argument("--chebyshev-taus-prob", type=float, default=None, help="Probability of using taking tau from the Chebyshev tau cycle")
     p.add_argument("--max-iters", type=int, default=2**10, help="Maximum iterations")
     p.add_argument("--ic-max", type=int, default=6, help="Max frequency index for A and B in sin(Aπx) and sin(Bπy)")
     p.add_argument("--ic-amp", type=float, default=0, help="Overall amplitude scaling for IC")
@@ -264,55 +277,47 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    if args.taus or args.cycle_length:
-        if args.taus:
-            taus = parse_taus(args.taus)
-        else:
-            key = args.cycle_length.strip()
-            if key not in TAU_SEQUENCES:
-                available = ", ".join(sorted(TAU_SEQUENCES.keys()))
-                raise SystemExit(f"Unknown --cycle-length '{key}'. Available: {available}")
-            taus = TAU_SEQUENCES[key]
-        gradient_descent_periodic(
-            nx=args.nx,
-            degree=args.degree,
-            gamma=args.gamma,
-            taus=taus,
-            chebyshev_tau_rate=args.chebyshev_tau_rate,
-            f_type=args.f_type,
-            f_center=tuple(args.f_center),
-            f_width=args.f_width,
-            f_amp=args.f_amp,
-            f_shift=args.f_shift,
-            max_iters=args.max_iters,
-            ic_max=args.ic_max,
-            ic_amp=args.ic_amp,
-            seed=args.seed,
-            output=args.output,
-            save_every=args.save_every,
-            energy_log=args.energy_log,
-            circular_inner_product=args.circular_inner_product,
-        )
-    elif args.chebyshev_tau_rate:
-        gradient_descent_periodic(
-            nx=args.nx,
-            degree=args.degree,
-            gamma=args.gamma,
-            taus=None,
-            chebyshev_tau_rate=args.chebyshev_tau_rate,
-            f_type=args.f_type,
-            f_center=tuple(args.f_center),
-            f_width=args.f_width,
-            f_amp=args.f_amp,
-            f_shift=args.f_shift,
-            max_iters=args.max_iters,
-            ic_max=args.ic_max,
-            ic_amp=args.ic_amp,
-            seed=args.seed,
-            output=args.output,
-            save_every=args.save_every,
-            energy_log=args.energy_log,
-            circular_inner_product=args.circular_inner_product,
-        )
+
+    if args.taus and args.taus_cycle:
+        raise SystemExit(f"The arguments --taus and --taus-cycle cannot both be specified.")
+    elif not(args.taus or args.taus_cycle) and not(args.chebyshev_taus_rate):
+        raise SystemExit(f"At least one of --taus, --taus-cycle, or --chebyshev-taus-rate must be specified.")
+    elif (args.taus or args.taus_cycle) and args.chebyshev_taus_rate and not(args.chebyshev_taus_prob):
+        raise SystemExit(f"If --taus or --taus-cycle and --chebyshev-taus-rate are specified, --chebyshev-taus-prob must be too.")
+    elif (args.taus or args.taus_cycle) and not(args.chebyshev_taus_rate) and args.chebyshev_taus_prob:
+        raise SystemExit(f"If --taus or --taus-cycle and --chebyshev-taus-prob are specified, --chebyshev-taus-rate must be too.")
+    elif not(args.taus or args.taus_cycle) and args.chebyshev_taus_rate and args.chebyshev_taus_prob:
+        raise SystemExit(f"If --chebyshev-taus-rate and --chebyshev-taus-prob are specified, either --taus or --taus-cycle must be too.")
+    
+    if args.taus:
+        taus = parse_taus(args.taus)
+    elif args.taus_cycle:
+        key = args.taus_cycle.strip()
+        if key not in TAU_SEQUENCES:
+            available = ", ".join(sorted(TAU_SEQUENCES.keys()))
+            raise SystemExit(f"Unknown --taus-cycle '{key}'. Available: {available}")
+        taus = TAU_SEQUENCES[key]
     else:
-        raise SystemExit("Please provide one of --taus, --cycle-length, or --chebyshev-tau-rate.")
+        taus = None
+
+    gradient_descent_periodic(
+        nx=args.nx,
+        degree=args.degree,
+        gamma=args.gamma,
+        taus=taus,
+        chebyshev_taus_rate=args.chebyshev_taus_rate,
+        chebyshev_taus_prob=args.chebyshev_taus_prob,
+        f_type=args.f_type,
+        f_center=tuple(args.f_center),
+        f_width=args.f_width,
+        f_amp=args.f_amp,
+        f_shift=args.f_shift,
+        max_iters=args.max_iters,
+        ic_max=args.ic_max,
+        ic_amp=args.ic_amp,
+        seed=args.seed,
+        output=args.output,
+        save_every=args.save_every,
+        energy_log=args.energy_log,
+        circular_inner_product=args.circular_inner_product,
+    )
