@@ -5,8 +5,8 @@ from matplotlib.widgets import TextBox, Button
 
 
 # Defaults
-DIM_DEFAULT = 256
-N_STEPS_DEFAULT = 512
+DIM_DEFAULT = 512
+N_STEPS_DEFAULT = 256
 SEQ_DEFAULT = "1.4,2.0,1.4,3.9,1.4,2.0,1.4,7.2,1.4,2.0,1.4,3.9,1.4,2.0,1.4,12.6,1.4,2.0,1.4,3.9,1.4,2.0,1.4,7.2,1.4,2.0,1.4,3.9,1.4,2.0,1.4,23.5,1.4,2.0,1.4,3.9,1.4,2.0,1.4,7.2,1.4,2.0,1.4,3.9,1.4,2.0,1.4,12.6,1.4,2.0,1.4,3.9,1.4,2.0,1.4,7.2,1.4,2.0,1.4,3.9,1.4,2.0,1.4,370.0,1.4,2.0,1.4,3.9,1.4,2.0,1.4,7.2,1.4,2.0,1.4,3.9,1.4,2.0,1.4,12.6,1.4,2.0,1.4,3.9,1.4,2.0,1.4,7.2,1.4,2.0,1.4,3.9,1.4,2.0,1.4,23.5,1.4,2.0,1.4,3.9,1.4,2.0,1.4,7.2,1.4,2.0,1.4,3.9,1.4,2.0,1.4,12.6,1.4,2.0,1.4,3.9,1.4,2.0,1.4,7.2,1.4,2.0,1.4,3.9,1.4,2.0,1.4"
 SEED_DEFAULT = None  # set to an int for reproducibility
 
@@ -88,6 +88,39 @@ def gd_periodic(A: np.ndarray, x0: np.ndarray, step_seq, n_steps: int, scale=Tru
     return np.array(xs)
 
 
+def cg_minimize(A: np.ndarray, x0: np.ndarray, n_steps: int) -> np.ndarray:
+    """
+    Conjugate Gradient to minimize f(x) = 1/2 x^T A x with symmetric positive (semi)definite A.
+    Equivalent to solving A x = 0 starting from x0. Returns the sequence of iterates including x0.
+    """
+    xs = [x0.copy()]
+    x = x0.copy()
+    # r = -A x (since b=0), p = r
+    r = -A @ x
+    p = r.copy()
+    rr = float(r.T @ r)
+    if rr == 0.0:
+        return np.array(xs)
+    for _ in range(n_steps):
+        Ap = A @ p
+        pAp = float(p.T @ Ap)
+        if pAp <= 0.0:
+            # Non-positive curvature or breakdown; stop
+            xs.append(x.copy())
+            break
+        alpha = rr / pAp
+        x = x + alpha * p
+        xs.append(x.copy())
+        r = r - alpha * Ap
+        rr_new = float(r.T @ r)
+        if rr_new <= 1e-30:
+            break
+        beta = rr_new / rr
+        p = r + beta * p
+        rr = rr_new
+    return np.array(xs)
+
+
 def custom_steps_random(dim, n_steps, r, p):
     phi = (1.0 + np.sqrt(5.0)) / 2.0
     s = 2.0 / (np.cosh(np.log(r)) + 1) if r > 0 else 0.0
@@ -136,14 +169,16 @@ def plot_nd_demo():
     x0 = np.zeros(dim)
     x0[0] = 1.0
 
-    show_linesearch = [True]
-    show_randtheta = [True]
+    show_linesearch = [False]
+    show_randtheta = [False]
+    show_periodic = [False]
+    show_cg = [False]
     xs_ls = gd_linesearch(A, x0, n_steps) if show_linesearch[0] else None
-    xs_seq = gd_periodic(A, x0, parse_step_sequence(seq_str), n_steps, scale=True)
+    xs_seq = gd_periodic(A, x0, parse_step_sequence(seq_str), n_steps, scale=True) if show_periodic[0] else None
     xs_custom = gd_periodic(A, x0, custom_steps_random(dim, n_steps, r_val, p_val), n_steps, scale=True)
     xs_randtheta = gd_periodic(A, x0, random_theta_steps(dim, n_steps, r_val, p_val), n_steps, scale=True) if show_randtheta[0] else None
     err_ls = errors_norm(xs_ls) if xs_ls is not None else None
-    err_seq = errors_norm(xs_seq)
+    err_seq = errors_norm(xs_seq) if xs_seq is not None else None
     err_custom = errors_norm(xs_custom)
     err_randtheta = errors_norm(xs_randtheta) if xs_randtheta is not None else None
 
@@ -152,21 +187,37 @@ def plot_nd_demo():
     ax.set_xlabel("Iteration")
     ax.set_ylabel("||x||")
     ax.set_yscale('log')
+    ax.set_xscale('log')
 
     if show_linesearch[0]:
-        line_ls, = ax.plot(range(len(err_ls)), err_ls, 'b.-', label='Line search')
+        line_ls, = ax.plot(range(1, len(err_ls)+1), err_ls, 'b.-', label='Line search')
     else:
         line_ls = None
-    line_seq, = ax.plot(range(len(err_seq)), err_seq, 'r.-', label='Periodic')
-    line_custom, = ax.plot(range(len(err_custom)), err_custom, 'g.-', label='Custom')
+    if show_periodic[0]:
+        line_seq, = ax.plot(range(1, len(err_seq)+1), err_seq, 'r.-', label='Periodic')
+    else:
+        line_seq = None
+    line_custom, = ax.plot(range(1, len(err_custom)+1), err_custom, 'g.-', label='Custom')
     if show_randtheta[0]:
-        line_randtheta, = ax.plot(range(len(err_randtheta)), err_randtheta, 'm.-', label='Random θ')
+        line_randtheta, = ax.plot(range(1, len(err_randtheta)+1), err_randtheta, 'm.-', label='Random θ')
     else:
         line_randtheta = None
-    ax_ls = plt.axes([0.52, 0.29, 0.18, 0.06])
+    # Conjugate Gradient line
+    xs_cg = cg_minimize(A, x0, n_steps) if show_cg[0] else None
+    err_cg = errors_norm(xs_cg) if xs_cg is not None else None
+    if show_cg[0]:
+        line_cg, = ax.plot(range(1, len(err_cg)+1), err_cg, 'k.-', label='Conjugate Gradient')
+    else:
+        line_cg = None
+    # Toggle controls
+    ax_ls = plt.axes([0.50, 0.29, 0.11, 0.06])
     cb_ls = CheckButtons(ax_ls, ['Show Line Search'], [show_linesearch[0]])
-    ax_randtheta = plt.axes([0.72, 0.29, 0.18, 0.06])
+    ax_randtheta = plt.axes([0.62, 0.29, 0.11, 0.06])
     cb_randtheta = CheckButtons(ax_randtheta, ['Show Random θ'], [show_randtheta[0]])
+    ax_periodic = plt.axes([0.74, 0.29, 0.11, 0.06])
+    cb_periodic = CheckButtons(ax_periodic, ['Show Periodic'], [show_periodic[0]])
+    ax_cg = plt.axes([0.86, 0.29, 0.11, 0.06])
+    cb_cg = CheckButtons(ax_cg, ['Show CG'], [show_cg[0]])
 
     def toggle_linesearch(label):
         nonlocal A, dim, n_steps, seq_str, r_val, p_val, line_ls
@@ -185,6 +236,20 @@ def plot_nd_demo():
         x0_local[0] = 1.0
         recompute(A, dim, n_steps, seq_local, r_val, p_val)
     cb_randtheta.on_clicked(toggle_randtheta)
+    
+    def toggle_periodic(label):
+        nonlocal A, dim, n_steps, seq_str, r_val, p_val, line_seq
+        show_periodic[0] = not show_periodic[0]
+        seq_local = parse_step_sequence(tb_seq.text)
+        recompute(A, dim, n_steps, seq_local, r_val, p_val)
+    cb_periodic.on_clicked(toggle_periodic)
+
+    def toggle_cg(label):
+        nonlocal A, dim, n_steps, seq_str, r_val, p_val, line_cg
+        show_cg[0] = not show_cg[0]
+        seq_local = parse_step_sequence(tb_seq.text)
+        recompute(A, dim, n_steps, seq_local, r_val, p_val)
+    cb_cg.on_clicked(toggle_cg)
     # ax.set_ylim(top=2)  # Remove fixed y-axis cap
     ax.legend()
 
@@ -220,7 +285,7 @@ def plot_nd_demo():
     btn_alt.on_clicked(set_alt)
 
     def recompute(A_local, dim_local, n_local, seq_local, r_local, p_local):
-        nonlocal line_ls, line_seq, line_custom, line_randtheta, A, dim, n_steps, seq_str, r_val, p_val
+        nonlocal line_ls, line_seq, line_custom, line_randtheta, line_cg, A, dim, n_steps, seq_str, r_val, p_val
         # Update state variables
         A = A_local
         dim = dim_local
@@ -231,47 +296,66 @@ def plot_nd_demo():
         x0_local = np.zeros(dim_local)
         x0_local[0] = 1.0
         xs_ls_local = gd_linesearch(A_local, x0_local, n_local) if show_linesearch[0] else None
-        xs_seq_local = gd_periodic(A_local, x0_local, seq_local, n_local, scale=True)
+        xs_seq_local = gd_periodic(A_local, x0_local, seq_local, n_local, scale=True) if show_periodic[0] else None
         xs_custom_local = gd_periodic(A_local, x0_local, custom_steps_random(dim_local, n_local, r_local, p_local), n_local, scale=True)
         xs_randtheta_local = gd_periodic(A_local, x0_local, random_theta_steps(dim_local, n_local, r_local, p_local), n_local, scale=True) if show_randtheta[0] else None
+        xs_cg_local = cg_minimize(A_local, x0_local, n_local) if show_cg[0] else None
         err_ls_local = errors_norm(xs_ls_local) if xs_ls_local is not None else None
-        err_seq_local = errors_norm(xs_seq_local)
+        err_seq_local = errors_norm(xs_seq_local) if xs_seq_local is not None else None
         err_custom_local = errors_norm(xs_custom_local)
         err_randtheta_local = errors_norm(xs_randtheta_local) if xs_randtheta_local is not None else None
+        err_cg_local = errors_norm(xs_cg_local) if xs_cg_local is not None else None
         # Remove and recreate lines if needed (for legend refresh)
         if show_linesearch[0]:
             if line_ls is None or not hasattr(line_ls, 'set_data'):
                 if line_ls is not None:
                     line_ls.remove()
-                line_ls, = ax.plot(range(len(err_ls_local)), err_ls_local, 'b.-', label='Line search')
+                line_ls, = ax.plot(range(1, len(err_ls_local)+1), err_ls_local, 'b.-', label='Line search')
             else:
-                line_ls.set_data(range(len(err_ls_local)), err_ls_local)
+                line_ls.set_data(range(1, len(err_ls_local)+1), err_ls_local)
         else:
             if line_ls is not None:
                 line_ls.set_data([], [])
-        if line_seq is None or not hasattr(line_seq, 'set_data'):
-            if line_seq is not None:
-                line_seq.remove()
-            line_seq, = ax.plot(range(len(err_seq_local)), err_seq_local, 'r.-', label='Periodic')
+        if show_periodic[0]:
+            if err_seq_local is not None:
+                if line_seq is None or not hasattr(line_seq, 'set_data'):
+                    if line_seq is not None:
+                        line_seq.remove()
+                    line_seq, = ax.plot(range(1, len(err_seq_local)+1), err_seq_local, 'r.-', label='Periodic')
+                else:
+                    line_seq.set_data(range(1, len(err_seq_local)+1), err_seq_local)
         else:
-            line_seq.set_data(range(len(err_seq_local)), err_seq_local)
+            if line_seq is not None:
+                line_seq.set_data([], [])
         if line_custom is None or not hasattr(line_custom, 'set_data'):
             if line_custom is not None:
                 line_custom.remove()
-            line_custom, = ax.plot(range(len(err_custom_local)), err_custom_local, 'g.-', label='Custom')
+            line_custom, = ax.plot(range(1, len(err_custom_local)+1), err_custom_local, 'g.-', label='Custom')
         else:
-            line_custom.set_data(range(len(err_custom_local)), err_custom_local)
+            line_custom.set_data(range(1, len(err_custom_local)+1), err_custom_local)
         if show_randtheta[0]:
             if err_randtheta_local is not None:
                 if line_randtheta is None or not hasattr(line_randtheta, 'set_data'):
                     if line_randtheta is not None:
                         line_randtheta.remove()
-                    line_randtheta, = ax.plot(range(len(err_randtheta_local)), err_randtheta_local, 'm.-', label='Random θ')
+                    line_randtheta, = ax.plot(range(1, len(err_randtheta_local)+1), err_randtheta_local, 'm.-', label='Random θ')
                 else:
-                    line_randtheta.set_data(range(len(err_randtheta_local)), err_randtheta_local)
+                    line_randtheta.set_data(range(1, len(err_randtheta_local)+1), err_randtheta_local)
         else:
             if line_randtheta is not None:
                 line_randtheta.set_data([], [])
+        # Conjugate Gradient line
+        if show_cg[0]:
+            if err_cg_local is not None:
+                if line_cg is None or not hasattr(line_cg, 'set_data'):
+                    if line_cg is not None:
+                        line_cg.remove()
+                    line_cg, = ax.plot(range(1, len(err_cg_local)+1), err_cg_local, 'k.-', label='Conjugate Gradient')
+                else:
+                    line_cg.set_data(range(1, len(err_cg_local)+1), err_cg_local)
+        else:
+            if line_cg is not None:
+                line_cg.set_data([], [])
         ax.relim()
         ax.autoscale_view()
         ax.legend()
