@@ -22,14 +22,11 @@ def make_psd_matrix(dim: int, seed=None):
 
 
 def make_alt_matrix(dim: int):
-    # Tridiagonal discrete Laplacian: 2 on diagonal; -1 on off-diagonal 
+    # Inverse discrete Laplacian
     A = np.zeros((dim, dim))
     for i in range(dim):
-        A[i, i] = 2
-        if i != 0:
-            A[i, i-1] = -1
-        if i != dim-1:
-            A[i, i+1] = -1
+        for j in range(dim):
+            A[i,j] = (dim + 1) - max(i, j)
     return A
 
 
@@ -204,7 +201,7 @@ def plot_nd_demo():
     tb_seq = TextBox(ax_seq, 'Step seq', initial=seq_str)
     tb_r = TextBox(ax_r, 'r [0,1]', initial=str(r_val))
     tb_p = TextBox(ax_p, 'p [0,1]', initial=str(p_val))
-    btn_alt = Button(ax_alt, 'Use discrete Laplacian')
+    btn_alt = Button(ax_alt, 'Use inverse Laplacian')
 
     ax_regen = plt.axes([0.52, 0.12, 0.18, 0.06])
     btn_regen = Button(ax_regen, 'Regenerate A')
@@ -217,7 +214,7 @@ def plot_nd_demo():
             btn_alt.label.set_text('Use Random')
         else:
             A = make_psd_matrix(dim, seed)
-            btn_alt.label.set_text('Use discrete Laplacian')
+            btn_alt.label.set_text('Use inverse Laplacian')
         seq_local = parse_step_sequence(tb_seq.text)
         recompute(A, dim, n_steps, seq_local, r_val, p_val)
     btn_alt.on_clicked(set_alt)
