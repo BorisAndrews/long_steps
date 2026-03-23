@@ -211,3 +211,6 @@ __marimo__/
 *.pvd
 *.vtu
 *.png
+
+# Obsidian
+obsidian.md
