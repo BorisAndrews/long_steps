@@ -212,5 +212,20 @@ __marimo__/
 *.vtu
 *.png
 
+# LaTeX
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.loc
+*.log
+*.out
+*.pdf
+*.soc
+*.thm
+*.synctex(busy)
+*.synctex.gz
+
 # Obsidian
 obsidian.md
