@@ -1,0 +1,17 @@
+I've been interesting in how different step size schedules, e.g. periodic cycles of step sizes, can be used to accelerate gradient descent. Let's look for a starter at gradient descent on a quadratic functional, and say we do step sizes h_k. After n gradient descent iterates, you end up with something like p_n(A)x_0, where p_n is a degree-n polynomial with p_n(0) = 1, and roots at 1/h_k. So it boils down then to trying to pick h_k to minimise ||p_n(A)|| (its maximum singular value). One clear choice comes from Chebyshev functions; picking step sizes such that p_n is an (appropriately scaled) Chebyshev function will give you nice bounds on ||p_n(A)|| provided your problem is strongly convex, i.e. A has a non-zero minimum singular value. This is essentially how one gets bounds for conjugate gradient. This idea I believe exists in the literature.
+
+
+
+Building on from here, one can look at the roots of the Chebyshev function. They follow an arcsin distribution. One idea is then to sample randomly from this arcsin distribution, and use that to determine the step size. I.e., to get a randomly generated step size h_k in some interval say [A, B], we pick a random number in [-pi/2, pi/2], apply sin, linearly transform into [1/B, 1/A], then invert. I think that was done in this manuscript (https://arxiv.org/abs/2412.05790) but I can't recall.
+
+
+
+A less stochastic idea is to sample from the arcsin distribution in a deterministic manner. A nice way to do this is using the golden ratio phi = (1 + sqrt(5))/2. Because of the famous "optimal irrationality" properties of phi, its great for sequentially generating uniformly distributed points in a distribution. In particular, in our case, an idea is to use (indexing from k = 1) h_k = const. / (1 - const. * cos^2(phi * pi * k)) where the constants are chosen to scale the h_k values into the desired interval [A, B]. This I believe was done here (https://link.springer.com/article/10.1007/s11590-012-0491-7).
+
+
+
+Building on from this, I've noticed something interesting. If I define a degree-n polynomial p_n with p_n(0) = 1 to have roots at sin^2(phi * pi * k) for k = 1, ..., n, then p_n remains bounded in [-1, 1]. I can't prove this, but it's clearly true. And it's very sensitive to phi; any modification from the golden ratio breaks this property. This motivates using h_k = const. / sin^2(phi * pi * k). This is fascinating, as the step sizes become arbitrarily large as n goes to infinity. I've observed this to improve the convergence rate of gradient descent on quadratic optimisation problems to O(1/n^2). It's a little more sensitive for non-quadratic problems, but I think I can adapt the idea.
+
+
+
+My question is this: Can you find this idea in the literature? I think a good place to start might be in citations of the above article (https://link.springer.com/article/10.1007/s11590-012-0491-7), which you can find here (https://scholar.google.com/scholar?cites=13741546507127133749). Is my idea actually subsumed by that article? It's a little hard to parse, and I'm not really in the field of optimisation.
