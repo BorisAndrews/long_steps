@@ -46,29 +46,54 @@ accelerated decay consistent with $O(1/n^2)$ in function error.
 
 \section{Golden stepsize schedule}
 
-Let $0<a<b\le 1$. Define
+Let
+\[
+\phi=\frac{1+\sqrt5}{2}.
+\]
+We use the one-parameter family
 \[
 r_k=a+(b-a)\sin^2(\pi\phi k),\qquad k\ge 1,
 \]
-and use inverse stepsizes $r_k$ with scaling parameter $\eta>0$:
+with stepsizes
 \[
 h_k=\frac{\eta}{r_k}.
 \]
-Equivalently,
+The manuscript's main choice is
 \[
-h_k=\frac{\eta}{a+(b-a)\sin^2(\pi\phi k)}
-=\frac{\eta}{\,b-(b-a)\cos^2(\pi\phi k)\,}.
+a=0,\qquad b=1,\qquad
+h_k=\frac{\eta}{\sin^2(\pi\phi k)}.
 \]
-The sequence is deterministic, non-periodic, and bounded:
+For quadratic minimization we then scale with
 \[
-\frac{\eta}{b}\le h_k\le \frac{\eta}{a}.
+\eta=\frac{1}{\|A\|_2},
 \]
-By tuning $(a,b,\eta)$ to a target spectral interval $[\mu,L]$, one can place
-$r_k/\eta$ inside a desired inverse-stepsize range (for instance within
-$[\mu,L]$ in a quadratic model).
+so that
+\[
+h_k=\frac{1}{\|A\|_2\,\sin^2(\pi\phi k)}.
+\]
+This is exactly the $a=0,b=1$ specialization of the bounded family above, and it
+produces the characteristic long-step spikes (numerically near Fibonacci indices).
 
-Compared with directly using Chebyshev roots in a fixed cycle, this construction avoids
-explicit dependence on the horizon length $n$ and can be streamed online.
+\paragraph{Quadratic algorithm.}
+For $f(x)=\frac12 x^\top A x-b^\top x$ with $A=A^\top\succ0$, define
+\[
+g_k=\nabla f(x_k),\qquad
+x_{k+1}=x_k-h_k g_k,\qquad
+h_k=\frac{1}{\|A\|_2\,\sin^2(\pi\phi(k+1))}.
+\]
+
+\paragraph{Non-quadratic safeguarded variant.}
+For a general smooth energy $E$, we keep the same proposed stepsize
+$h_j=\eta/\sin^2(\pi\phi j)$ but add a reset rule. Let $E_{\mathrm{ref}}=E(x_0)$ and
+$j=1$.
+At each iteration:
+\[
+\tilde x=x-h_j\nabla E(x),\qquad \tilde E=E(\tilde x).
+\]
+If $\tilde E\le E_{\mathrm{ref}}$, accept: $x\leftarrow\tilde x$, $j\leftarrow j+1$.
+If $\tilde E>E_{\mathrm{ref}}$ (typically at a spike step), reject/undo:
+$x$ is unchanged, set $E_{\mathrm{ref}}\leftarrow E(x)$, and reset $j\leftarrow1$.
+So each restart compares against the energy at the start of that restart cycle.
 
 \section{Analysis}
 
@@ -76,11 +101,11 @@ explicit dependence on the horizon length $n$ and can be streamed online.
 
 For the quadratic model, after $n$ iterations
 \[
-p_n(t)=\prod_{k=1}^n\left(1-\frac{\eta t}{r_k}\right),
+p_n(t)=\prod_{k=1}^n\left(1-\frac{\eta t}{\sin^2(\pi\phi k)}\right),
 \qquad
 \|e_n\|_2\le \max_{\lambda\in[\mu,L]}|p_n(\lambda)|\,\|e_0\|_2.
 \]
-Hence performance is determined by how roots $\{r_k/\eta\}$ sample $[\mu,L]$ and by
+Hence performance is determined by how roots $\{\sin^2(\pi\phi k)/\eta\}$ sample $[\mu,L]$ and by
 their ordering. The golden-ratio rotation
 $k\mapsto \{\phi k\}$ is a standard low-discrepancy mechanism, suggesting improved
 spectral coverage over finite prefixes.
