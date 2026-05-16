@@ -226,6 +226,3 @@ __marimo__/
 *.thm
 *.synctex(busy)
 *.synctex.gz
-
-# Obsidian
-obsidian.md
